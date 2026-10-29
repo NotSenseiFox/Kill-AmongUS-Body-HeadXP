@@ -1,0 +1,87 @@
+--// Combat Audio Feedback System (Body Hit, Headshot & Kill Sounds)
+--// Works for players AND NPC dummies
+
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+
+-- CONFIGURATION: Custom Roblox Audio IDs applied successfully
+local BODY_HIT_SOUND_ID   = "rbxassetid://101023147710668"  
+local HEADSHOT_SOUND_ID   = "rbxassetid://101023147710668"  
+local ELIMINATION_SOUND_ID = "rbxassetid://130456049552264"
+
+local function playCombatSound(soundId, soundName)
+    local sound = Instance.new("Sound")
+    sound.Name = soundName or "CombatSound"
+    sound.SoundId = soundId
+    sound.Volume = 1
+    sound.Parent = SoundService
+    sound:Play()
+
+    sound.Ended:Once(function()
+        sound:Destroy()
+    end)
+end
+
+local watched = {}
+
+local function watchCharacter(character)
+    if watched[character] then
+        return
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        return
+    end
+
+    watched[character] = true
+
+    -- Hook up an internal listener to watch for incoming health updates
+    local lastHealth = humanoid.Health
+    
+    local connection
+    connection = humanoid.HealthChanged:Connect(function(currentHealth)
+        -- Disconnect listener when the entity dies to free memory
+        if currentHealth <= 0 then
+            connection:Disconnect()
+            return
+        end
+        
+        if currentHealth < lastHealth then
+            local damageTaken = lastHealth - currentHealth
+            
+            -- Detects high-damage headshots. You can tweak this value (e.g., 30) 
+            -- depending on your weapons' standard body vs headshot damages.
+            if damageTaken >= 30 then
+                playCombatSound(HEADSHOT_SOUND_ID, "HeadshotSound")
+            else
+                playCombatSound(BODY_HIT_SOUND_ID, "BodyHitSound")
+            end
+        end
+        
+        lastHealth = currentHealth
+    end)
+
+    -- Track the final elimination using your original layout structure
+    humanoid.Died:Connect(function()
+        playCombatSound(ELIMINATION_SOUND_ID, "SataAndagiKillSound")
+    end)
+end
+
+-- Watch existing characters/dummies
+for _, object in ipairs(workspace:GetDescendants()) do
+    if object:IsA("Model") and object:FindFirstChildOfClass("Humanoid") then
+        watchCharacter(object)
+    end
+end
+
+-- Watch newly spawned players and dummies
+workspace.DescendantAdded:Connect(function(object)
+    if object:IsA("Humanoid") then
+        local character = object.Parent
+
+        if character and character:IsA("Model") then
+            watchCharacter(character)
+        end
+    end
+end)
